@@ -8,7 +8,6 @@
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f0f4f8; }
@@ -18,11 +17,23 @@
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div class="flex h-screen items-center justify-center">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+    </div>
 
     <script type="text/babel">
         const { useState, useEffect, useMemo } = React;
-        const { X, Save } = LucideReact;
+
+        // Inline Icons for reliability
+        const XIcon = ({ size = 24 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        );
+
+        const SaveIcon = ({ size = 24 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+        );
 
         function App() {
             const [view, setView] = useState('register');
@@ -40,13 +51,16 @@
             const [usersList, setUsersList] = useState([]);
 
             useEffect(() => {
-                const storedUser = localStorage.getItem('mesoshqip_user');
-                if (storedUser) {
-                    setCurrentUser(JSON.parse(storedUser));
-                    setView('app');
+                try {
+                    const storedUser = localStorage.getItem('mesoshqip_user');
+                    if (storedUser) {
+                        setCurrentUser(JSON.parse(storedUser));
+                        setView('app');
+                    }
+                } catch (e) {
+                    console.error("Error reading localStorage", e);
                 }
                 
-                // Ngarko zerat e AI
                 const loadVoices = () => {
                     const availableVoices = window.speechSynthesis.getVoices();
                     setVoices(availableVoices);
@@ -55,9 +69,7 @@
                 loadVoices();
             }, []);
 
-            // ---------------- TREGUESI I ZËRIT MË TË MIRË (Neural/HD) ----------------
             const getBestAlbanianVoice = () => {
-                // Kerkon per Anila ose Ilir (Neural voices ne Windows/Edge)
                 return voices.find(v => (v.lang.startsWith('sq') || v.name.includes('Albanian')) && v.name.includes('Online')) || 
                        voices.find(v => v.lang.startsWith('sq')) || 
                        null;
@@ -74,23 +86,22 @@
                 const bestVoice = getBestAlbanianVoice();
                 if (bestVoice) {
                     utterance.voice = bestVoice;
-                    console.log("Duke perdorur zerin:", bestVoice.name);
                 }
                 utterance.lang = 'sq-AL';
-                utterance.rate = 0.9; // Pak me ngadale per mesim
+                utterance.rate = 0.9;
                 window.speechSynthesis.speak(utterance);
             };
 
-            // ---------------- SPEECH TO TEXT ----------------
             const startPractice = () => {
                 if (!customText) return alert("Shkruaj një fjali ose fjalë për të praktikuar!");
                 
-                if (!('webkitSpeechRecognition' in window)) {
-                    alert("Përdorni Google Chrome për njohjen e zërit.");
+                if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                    alert("Browseri juaj nuk e mbështet njohjen e zërit. Përdorni Google Chrome.");
                     return;
                 }
 
-                const recognition = new webkitSpeechRecognition();
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                const recognition = new SpeechRecognition();
                 recognition.lang = 'sq-AL';
                 recognition.onstart = () => { setIsRecording(true); setTranscript(''); setFeedback(null); };
                 recognition.onresult = (e) => {
@@ -125,49 +136,59 @@
                 });
             };
 
-            // ---------------- HANDLERS ----------------
             const handleRegister = async (e) => {
                 e.preventDefault();
                 const name = e.target.name.value;
-                const res = await fetch('/api/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name })
-                });
-                const data = await res.json();
-                setCurrentUser(data.user);
-                localStorage.setItem('mesoshqip_user', JSON.stringify(data.user));
-                setView('app');
+                try {
+                    const res = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name })
+                    });
+                    const data = await res.json();
+                    setCurrentUser(data.user);
+                    localStorage.setItem('mesoshqip_user', JSON.stringify(data.user));
+                    setView('app');
+                } catch (err) {
+                    alert("Gabim gjatë regjistrimit!");
+                }
             };
 
             const handlePremium = async () => {
-                const res = await fetch('/api/upgrade', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: currentUser.id })
-                });
-                const data = await res.json();
-                setCurrentUser(data.user);
-                localStorage.setItem('mesoshqip_user', JSON.stringify(data.user));
-                setShowPayment(false);
+                try {
+                    const res = await fetch('/api/upgrade', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId: currentUser.id })
+                    });
+                    const data = await res.json();
+                    setCurrentUser(data.user);
+                    localStorage.setItem('mesoshqip_user', JSON.stringify(data.user));
+                    setShowPayment(false);
+                } catch (err) {
+                    alert("Gabim gjatë pagesës!");
+                }
             };
 
             const handleAdminLogin = async (e) => {
                 e.preventDefault();
-                const res = await fetch('/api/admin/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: adminEmail, password: adminPass })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    const uRes = await fetch('/api/admin/users', { headers: { 'Authorization': data.token }});
-                    setUsersList(await uRes.json());
-                    setView('admin');
-                } else alert("Gabim!");
+                try {
+                    const res = await fetch('/api/admin/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: adminEmail, password: adminPass })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        const uRes = await fetch('/api/admin/users', { headers: { 'Authorization': data.token }});
+                        setUsersList(await uRes.json());
+                        setView('admin');
+                    } else alert("Gabim!");
+                } catch (err) {
+                    alert("Gabim në server!");
+                }
             };
 
-            // ---------------- VIEWS ----------------
             if (view === 'register') {
                 return (
                     <div className="flex h-screen items-center justify-center bg-slate-900 p-6">
@@ -195,6 +216,7 @@
                                 <input type="password" placeholder="Password" className="w-full p-4 bg-slate-700 text-white rounded-xl outline-none" value={adminPass} onChange={e=>setAdminPass(e.target.value)} />
                                 <button className="w-full bg-white text-slate-900 font-bold p-4 rounded-xl">Kyçu</button>
                             </form>
+                            <button onClick={() => setView('register')} className="mt-4 w-full text-slate-400 font-bold">Kthehu</button>
                         </div>
                     </div>
                 );
@@ -236,7 +258,9 @@
                             <div><h1 className="text-2xl font-black text-slate-800">Mëso Shqip</h1><p className="text-slate-400 text-sm italic">AI-Powered Learning</p></div>
                             <div className="flex items-center gap-4">
                                 {currentUser?.isPremium ? <span className="premium-gradient text-white px-4 py-2 rounded-full text-xs font-black shadow-lg">PREMIUM</span> : <button onClick={()=>setShowPayment(true)} className="bg-white text-blue-600 border border-blue-100 px-4 py-2 rounded-full text-xs font-black hover:bg-blue-50">UPGRADE</button>}
-                                <button onClick={()=>{localStorage.clear(); window.location.reload();}} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                                <button onClick={()=>{localStorage.clear(); window.location.reload();}} className="text-slate-400 hover:text-slate-600">
+                                    <XIcon size={20} />
+                                </button>
                             </div>
                         </header>
 
@@ -271,7 +295,7 @@
                             </div>
 
                             {transcript && (
-                                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="space-y-4">
                                     <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
                                         <p className="text-xs font-black text-slate-300 uppercase mb-2">Dëgjuam:</p>
                                         <p className="text-xl font-bold text-slate-600">"{transcript}"</p>
@@ -290,7 +314,9 @@
                             {showPayment && (
                                 <div className="absolute inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-8 z-50">
                                     <div className="bg-white p-10 rounded-[40px] w-full max-w-sm text-center shadow-2xl border-t-8 border-purple-500">
-                                        <div className="w-16 h-16 premium-gradient rounded-3xl flex items-center justify-center mx-auto mb-6 text-white shadow-xl"><Save size={32}/></div>
+                                        <div className="w-16 h-16 premium-gradient rounded-3xl flex items-center justify-center mx-auto mb-6 text-white shadow-xl">
+                                            <SaveIcon size={32} />
+                                        </div>
                                         <h2 className="text-3xl font-black mb-4">Akses Profesional</h2>
                                         <p className="text-slate-500 mb-8 font-medium">Dëgjo çdo tekst me zëra njerëzorë të trajnuar me AI (Neural HD) për të mësuar intonacionin e saktë.</p>
                                         <div className="bg-slate-50 p-5 rounded-2xl mb-8 flex justify-between items-center border-2 border-slate-100">
@@ -310,8 +336,13 @@
             );
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        try {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        } catch (err) {
+            console.error("React render error", err);
+            document.getElementById('root').innerHTML = '<div style="color:red; padding:20px;">Gabim gjatë ngarkimit të aplikacionit. Ju lutem kontrolloni internetin ose kontaktoni admin.</div>';
+        }
     </script>
 </body>
 </html>
