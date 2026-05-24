@@ -3,9 +3,11 @@ const fs = require('fs');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const nodemailer = require('nodemailer');
+const { exec } = require('child_process');
 
 const app = express();
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 const DB_FILE = path.join(__dirname, 'database.json');
 
 app.use(cors());
@@ -27,6 +29,37 @@ function readDB() {
 
 function writeDB(data) {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    
+    // GitHub Sync (Like OrdinancaPro)
+    const token = process.env.GITHUB_TOKEN;
+    if (token) {
+        const repo = "github.com/Check-this-out-for-me/OrdinancaPro.git";
+        const remote = `https://x-access-token:${token}@${repo}`;
+        exec(`git add database.json && git commit -m "Update MesoShqip database" && git push ${remote} main`, (err) => {
+            if (err) console.error("GitHub Sync Error:", err);
+            else console.log("Database synced to GitHub!");
+        });
+    }
+}
+
+// Mailer Setup
+let transporter;
+async function getTransporter() {
+    if (transporter) return transporter;
+    
+    // Create a test account for demo purposes (Ethereal Email)
+    let testAccount = await nodemailer.createTestAccount();
+    transporter = nodemailer.createTransport({
+        host: "smtp.ethereal.email",
+        port: 587,
+        secure: false, 
+        auth: {
+            user: testAccount.user,
+            pass: testAccount.pass,
+        },
+    });
+    console.log(`\n[EMAIL SERVICE] Test SMTP created. User: ${testAccount.user}`);
+    return transporter;
 }
 
 // User Registration
@@ -48,8 +81,8 @@ app.post('/api/register', (req, res) => {
     res.json({ message: "Registered successfully", user: newUser });
 });
 
-// Step 1: Request Premium (Send "Email")
-app.post('/api/premium/request', (req, res) => {
+// Step 1: Request Premium (Send real test email)
+app.post('/api/premium/request', async (req, res) => {
     const { userId, email } = req.body;
     if (!userId || !email) return res.status(400).json({ error: "UserId and Email required" });
 
@@ -57,31 +90,50 @@ app.post('/api/premium/request', (req, res) => {
     const user = db.users.find(u => u.id === userId);
     if (!user) return res.status(404).json({ error: "User not found" });
 
-    // Generate a 6-digit code
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Store verification request
     if (!db.verifications) db.verifications = [];
-    db.verifications = db.verifications.filter(v => v.userId !== userId); // Remove old ones
+    db.verifications = db.verifications.filter(v => v.userId !== userId);
     db.verifications.push({
         userId,
         email,
         code,
-        expires: Date.now() + 10 * 60 * 1000 // 10 minutes
+        expires: Date.now() + 10 * 60 * 1000
     });
     
     writeDB(db);
 
-    // In a real app, you'd use nodemailer here. 
-    // Since we are doing it "GitHub style" and automated, 
-    // we will log it to the console and simulate the email.
-    console.log(`\n--- EMAIL SIMULATION ---`);
-    console.log(`To: ${email}`);
-    console.log(`Subject: MesoShqip Premium Verification Code`);
-    console.log(`Code: ${code}`);
-    console.log(`------------------------\n`);
+    try {
+        const mailer = await getTransporter();
+        const info = await mailer.sendMail({
+            from: '"MësoShqip AI" <noreply@mesoshqip.ai>',
+            to: email,
+            subject: "Kodi i Verifikimit për Premium ⭐",
+            text: `Kodi juaj është: ${code}`,
+            html: `
+                <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                    <h2 style="color: #6366f1;">Mëso Shqip Premium</h2>
+                    <p>Përshëndetje <b>${user.name}</b>,</p>
+                    <p>Kodi juaj për të aktivizuar paketën Premium është:</p>
+                    <div style="background: #f3f4f6; padding: 15px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; border-radius: 8px;">
+                        ${code}
+                    </div>
+                    <p style="color: #666; font-size: 12px; margin-top: 20px;">Ky kod skadon pas 10 minutave.</p>
+                </div>
+            `,
+        });
 
-    res.json({ message: "Verification code sent to email" });
+        const previewUrl = nodemailer.getTestMessageUrl(info);
+        console.log(`\n[EMAIL SENT] To: ${email} | Code: ${code} | Preview: ${previewUrl}`);
+
+        res.json({ 
+            message: "Verification code sent!", 
+            previewUrl: previewUrl // We send this so the user can actually "open" the email in the demo
+        });
+    } catch (err) {
+        console.error("Email Error:", err);
+        res.status(500).json({ error: "Dështoi dërgimi i email-it" });
+    }
 });
 
 // Step 2: Verify Code
@@ -100,7 +152,6 @@ app.post('/api/premium/verify', (req, res) => {
     db.users[userIndex].isPremium = true;
     db.users[userIndex].email = verification.email;
     
-    // Cleanup
     db.verifications = db.verifications.filter(v => v.userId !== userId);
     writeDB(db);
 

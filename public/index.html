@@ -14,6 +14,8 @@
         .diff-error { color: #f43f5e; font-weight: 800; background: #fff1f2; padding: 2px 4px; border-radius: 4px; }
         .diff-correct { color: #10b981; }
         .premium-gradient { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); }
+        .loading-shimmer { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     </style>
 </head>
 <body>
@@ -39,6 +41,10 @@
             <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
         );
 
+        const ExternalLinkIcon = ({ size = 16 }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        );
+
         function App() {
             const [view, setView] = useState('register');
             const [currentUser, setCurrentUser] = useState(null);
@@ -54,6 +60,7 @@
             const [premiumEmail, setPremiumEmail] = useState('');
             const [premiumCode, setPremiumCode] = useState('');
             const [isVerifying, setIsVerifying] = useState(false);
+            const [emailPreviewUrl, setEmailPreviewUrl] = useState('');
 
             // Admin State
             const [adminEmail, setAdminEmail] = useState('');
@@ -174,10 +181,11 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ userId: currentUser.id, email: premiumEmail })
                     });
+                    const data = await res.json();
                     if (res.ok) {
+                        setEmailPreviewUrl(data.previewUrl);
                         setPremiumStep('verify');
                     } else {
-                        const data = await res.json();
                         alert(data.error || "Gabim!");
                     }
                 } catch (err) {
@@ -391,7 +399,18 @@
                                                     <SaveIcon size={32} />
                                                 </div>
                                                 <h2 className="text-3xl font-black mb-4">Verifiko Email-in</h2>
-                                                <p className="text-slate-500 mb-8 font-medium">Kemi dërguar një kod 6-shifror në <b>{premiumEmail}</b>.</p>
+                                                <p className="text-slate-500 mb-4 font-medium">Kemi dërguar kodin në <b>{premiumEmail}</b>.</p>
+                                                
+                                                {emailPreviewUrl && (
+                                                    <a 
+                                                        href={emailPreviewUrl} 
+                                                        target="_blank" 
+                                                        className="inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-xl mb-6 text-sm font-bold border border-blue-100 hover:bg-blue-100 transition-all"
+                                                    >
+                                                        <ExternalLinkIcon /> Hap Email-in (Demo)
+                                                    </a>
+                                                )}
+
                                                 <form onSubmit={verifyPremiumCode} className="space-y-4">
                                                     <input 
                                                         type="text" 
@@ -409,7 +428,7 @@
                                                     >
                                                         {isVerifying ? 'Duke verifikuar...' : 'Verifiko dhe Fillo'}
                                                     </button>
-                                                    <button type="button" onClick={() => setPremiumStep('email')} className="text-slate-400 font-bold text-sm">Ndrysho Email-in</button>
+                                                    <button type="button" onClick={() => {setPremiumStep('email'); setEmailPreviewUrl('');}} className="text-slate-400 font-bold text-sm">Ndrysho Email-in</button>
                                                 </form>
                                             </>
                                         )}
