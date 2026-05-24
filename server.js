@@ -8,10 +8,14 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 80;
 
-// Konfigurimi i Supabase (Databaza Online Falas)
+// Mos thirr createClient nese nuk ka URL (per te shmangur crash ne Render)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+let supabase = null;
+
+if (supabaseUrl && supabaseKey) {
+    supabase = createClient(supabaseUrl, supabaseKey);
+}
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -19,6 +23,8 @@ app.use(express.static(path.join(__dirname, 'build')));
 
 // API per te marre pacientet nga databaza online
 app.get('/api/data', async (req, res) => {
+    if (!supabase) return res.json([]); // Kthe bosh nese nuk ka konfigurim ende
+    
     const { data, error } = await supabase
         .from('appointments')
         .select('*');
@@ -29,10 +35,9 @@ app.get('/api/data', async (req, res) => {
 
 // API per te ruajtur/update-uar pacientet
 app.post('/api/save', async (req, res) => {
-    const appointments = req.body;
+    if (!supabase) return res.status(400).json({ error: 'Supabase nuk eshte i konfiguruar' });
     
-    // Per kete version, po bejme fshirjen dhe rishkrimin (simulim i database.json)
-    // Ne nje version me te avancuar, do te perdornim UPSERT
+    const appointments = req.body;
     const { error: deleteError } = await supabase.from('appointments').delete().neq('id', 0);
     if (deleteError) return res.status(500).json({ error: deleteError.message });
 
