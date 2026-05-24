@@ -1,50 +1,50 @@
-require('dotenv').config();
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
+const fs = require('fs');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
+const { exec } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 80;
-
-// Mos thirr createClient nese nuk ka URL (per te shmangur crash ne Render)
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-let supabase = null;
-
-if (supabaseUrl && supabaseKey) {
-    supabase = createClient(supabaseUrl, supabaseKey);
-}
+const DB_FILE = path.join(__dirname, 'database.json');
 
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'build')));
 
-// API per te marre pacientet nga databaza online
-app.get('/api/data', async (req, res) => {
-    if (!supabase) return res.json([]); // Kthe bosh nese nuk ka konfigurim ende
-    
-    const { data, error } = await supabase
-        .from('appointments')
-        .select('*');
-    
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
+// API per te marre pacientet
+app.get('/api/data', (req, res) => {
+    if (!fs.existsSync(DB_FILE)) {
+        fs.writeFileSync(DB_FILE, '[]');
+        return res.json([]);
+    }
+    const data = fs.readFileSync(DB_FILE);
+    try {
+        res.json(JSON.parse(data));
+    } catch (e) {
+        res.json([]);
+    }
 });
 
-// API per te ruajtur/update-uar pacientet
-app.post('/api/save', async (req, res) => {
-    if (!supabase) return res.status(400).json({ error: 'Supabase nuk eshte i konfiguruar' });
+// API per te ruajtur dhe bere Push ne GitHub
+app.post('/api/save', (req, res) => {
+    const data = req.body;
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+
+    // Automatikisht sinkronizo me GitHub nese jemi ne server (Render)
+    const token = process.env.GITHUB_TOKEN;
+    if (token) {
+        const repo = "github.com/Check-this-out-for-me/OrdinancaPro.git";
+        const remote = `https://x-access-token:${token}@${repo}`;
+        
+        exec(`git add database.json && git commit -m "Auto-update database" && git push ${remote} main`, (err) => {
+            if (err) console.error("GitHub Sync Error:", err);
+            else console.log("Database synced to GitHub!");
+        });
+    }
     
-    const appointments = req.body;
-    const { error: deleteError } = await supabase.from('appointments').delete().neq('id', 0);
-    if (deleteError) return res.status(500).json({ error: deleteError.message });
-
-    const { error: insertError } = await supabase.from('appointments').insert(appointments);
-    if (insertError) return res.status(500).json({ error: insertError.message });
-
-    res.json({ message: 'Te dhenat u ruajten ne Supabase!' });
+    res.json({ message: 'Saved' });
 });
 
 app.get('*', (req, res) => {
@@ -52,5 +52,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`Serveri po punon online ne portin ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
