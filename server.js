@@ -5,7 +5,7 @@ const bodyParser = require('body-parser');
 const path = require('path');
 
 const app = express();
-const PORT = 5001; // Using 5001 to avoid conflicts
+const PORT = 5001;
 const DB_FILE = path.join(__dirname, 'database.json');
 
 app.use(cors());
@@ -14,11 +14,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Initialize database if it doesn't exist
 if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify({ users: [] }, null, 2));
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users: [], verifications: [] }, null, 2));
 }
 
 function readDB() {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    try {
+        return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    } catch (e) {
+        return { users: [], verifications: [] };
+    }
 }
 
 function writeDB(data) {
@@ -34,6 +38,7 @@ app.post('/api/register', (req, res) => {
     const newUser = {
         id: Date.now().toString(),
         name,
+        email: null,
         isPremium: false,
         registeredAt: new Date().toISOString()
     };
@@ -43,15 +48,60 @@ app.post('/api/register', (req, res) => {
     res.json({ message: "Registered successfully", user: newUser });
 });
 
-// Upgrade to Premium (Simulation)
-app.post('/api/upgrade', (req, res) => {
-    const { userId } = req.body;
+// Step 1: Request Premium (Send "Email")
+app.post('/api/premium/request', (req, res) => {
+    const { userId, email } = req.body;
+    if (!userId || !email) return res.status(400).json({ error: "UserId and Email required" });
+
     const db = readDB();
-    const userIndex = db.users.findIndex(u => u.id === userId);
+    const user = db.users.find(u => u.id === userId);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Generate a 6-digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     
+    // Store verification request
+    if (!db.verifications) db.verifications = [];
+    db.verifications = db.verifications.filter(v => v.userId !== userId); // Remove old ones
+    db.verifications.push({
+        userId,
+        email,
+        code,
+        expires: Date.now() + 10 * 60 * 1000 // 10 minutes
+    });
+    
+    writeDB(db);
+
+    // In a real app, you'd use nodemailer here. 
+    // Since we are doing it "GitHub style" and automated, 
+    // we will log it to the console and simulate the email.
+    console.log(`\n--- EMAIL SIMULATION ---`);
+    console.log(`To: ${email}`);
+    console.log(`Subject: MesoShqip Premium Verification Code`);
+    console.log(`Code: ${code}`);
+    console.log(`------------------------\n`);
+
+    res.json({ message: "Verification code sent to email" });
+});
+
+// Step 2: Verify Code
+app.post('/api/premium/verify', (req, res) => {
+    const { userId, code } = req.body;
+    const db = readDB();
+    
+    const verification = db.verifications?.find(v => v.userId === userId && v.code === code);
+    
+    if (!verification) return res.status(400).json({ error: "Invalid code" });
+    if (verification.expires < Date.now()) return res.status(400).json({ error: "Code expired" });
+
+    const userIndex = db.users.findIndex(u => u.id === userId);
     if (userIndex === -1) return res.status(404).json({ error: "User not found" });
 
     db.users[userIndex].isPremium = true;
+    db.users[userIndex].email = verification.email;
+    
+    // Cleanup
+    db.verifications = db.verifications.filter(v => v.userId !== userId);
     writeDB(db);
 
     res.json({ message: "Upgraded to Premium!", user: db.users[userIndex] });
