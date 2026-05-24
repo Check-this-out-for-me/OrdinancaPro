@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { LayoutDashboard, BarChart3, Users, Stethoscope, PlusCircle, CheckCircle2, X, Lock, Mail, ChevronRight, Download, Edit3, Save } from 'lucide-react';
 
+// Versioni 1.0.1 - GitHub Database
 const API_URL = '/api';
 
 export default function App() {
